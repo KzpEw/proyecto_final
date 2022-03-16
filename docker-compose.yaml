@@ -1,0 +1,82 @@
+version: '3.7'
+
+services:
+  wordpress:
+    image: wordpress:php7.2-apache
+    ports:
+      - 8080:80
+    environment:
+      WORDPRESS_DB_HOST: mysql
+      WORDPRESS_DB_USER: root
+      WORDPRESS_DB_PASSWORD: root
+      WORDPRESS_DB_NAME: wordpress
+    links:
+      - mysql:mysql
+    networks:
+      - proyecto
+    logging:
+      driver: fluentd
+      options:
+        fluentd-async-connect: "true"
+        fluentd-address: localhost:24224
+        tag: proyecto.logs
+
+  mysql:
+    image: mysql:latest
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_DATABASE: wordpress
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+    networks:
+      - proyecto
+    logging:
+      driver: fluentd
+      options:
+        fluentd-async-connect: "true"
+        fluentd-address: localhost:24224
+        tag: proyecto.logs
+
+  loki:
+    image: grafana/loki:2.0.0
+    container_name: loki
+    volumes:
+      - .loki/config/loki.yaml:/etc/config/loki.yaml
+    ports:
+      - "3100:3100"
+    networks:
+      - proyecto
+  
+  fluentbit:
+    container_name: fluentbit
+    image: grafana/fluent-bit-plugin-loki
+    ports:
+      - 24224:24224
+      - 24224:24224/udp
+      - 2020:2020
+    environment:
+      LOKI_URL: http://loki:3100/loki/api/v1/push
+    volumes:
+      - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf   
+    networks:
+      - proyecto
+  
+  grafana:
+    image: grafana/grafana:7.2.2
+    container_name: grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: toor
+    ports:
+      - "3000:3000"
+    networks:
+      - proyecto
+    depends_on:
+      - loki
+    volumes:
+      - ./grafana/configs/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml
+
+networks:
+  proyecto:
+    driver: bridge
